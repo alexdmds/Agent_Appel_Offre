@@ -1,0 +1,10 @@
+faiss-cpu
+requests
+tqdm
+PyPDF2
+python-docx
+numpy
+pandas
+openpyxl
+python-pptx
+xlrd 

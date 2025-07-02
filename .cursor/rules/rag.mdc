@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Crée un module Python nommé `rag.py` qui :
+
+1. Parcourt l’arborescence suivante (racine = "OneDrive_1_02-07-2025") :
+   - "AO_GO" contient les AO classés comme GO
+   - "AO_NOGO" contient les AO classés comme NOGO
+   - "New_AO" contient un nouvel appel d’offre en cours de traitement (à ignorer)
+
+2. Ingestion :
+   - Pour chaque fichier texte (PDF/DOCX/TXT préalablement parsé ou brut) dans "AO_GO" et "AO_NOGO", lis le contenu et découpe-le en chunks (par exemple 500 tokens ou 2000 caractères).
+   - Ignore tous les fichiers dans "New_AO".
+
+3. Format des documents :
+   Chaque chunk doit être représenté sous la forme :
+   {
+       "content": "texte du chunk...",
+       "metadata": {
+           "filepath": "AO_GO/AO_EDF/V2/Cahier_des_charges.pdf",   # chemin relatif depuis la racine
+           "ao_id": "AO_EDF",                                      # nom du dossier d’AO (1er sous-dossier de AO_GO ou AO_NOGO)
+           "decision": "GO"                                        # "GO" ou "NOGO" selon le dossier parent
+       }
+   }
+
+4. Utilise l’API Mistral (https://api.mistral.ai/v1/embeddings) pour créer un vecteur d’embedding pour chaque chunk.
+   - Le modèle est `mistral-embed`.
+   - La clé API est lue depuis la variable d’environnement `MISTRAL_API_KEY`.
+
+5. Utilise FAISS pour stocker les vecteurs localement avec correspondance vers leurs métadonnées (au moins : content, filepath, ao_id, decision).
+
+6. Fournit les fonctions suivantes :
+   - `build_index(documents: List[Dict])` : crée un index FAISS à partir des chunks, puis le sauvegarde localement dans un fichier `rag.index` et `rag.meta.pkl` pour les métadonnées.
+   - `query_rag(question: str, top_k: int = 5)` : 
+       - Crée un embedding de la question avec Mistral
+       - Recherche les `top_k` chunks les plus proches dans FAISS
+       - Retourne une liste de résultats au format :
+         [
+             {
+                 "score": 0.82,
+                 "content": "...",
+                 "filepath": "...",
+                 "ao_id": "...",
+                 "decision": "GO"
+             },
+             ...
+         ]
+   - `load_index()` / `save_index()` : pour recharger ou sauvegarder l’index FAISS et les métadonnées associées.
+
+7. Utilise `tqdm` pour afficher la progression, `requests` pour les appels API, `pickle` pour les métadonnées.
+
+8. Gère proprement les erreurs d’API (limites, temps mort, etc.).
+
+Tout doit fonctionner **en local** et exclure les documents du dossier `New_AO`.

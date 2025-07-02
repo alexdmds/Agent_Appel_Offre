@@ -7,4 +7,8 @@ numpy
 pandas
 openpyxl
 python-pptx
-xlrd 
+xlrd
+langchain
+langgraph
+langchain-openai
+langchain-core 

@@ -3,27 +3,72 @@ description:
 globs: 
 alwaysApply: true
 ---
-Tu développes un agent autonome en Python à l’aide de LangChain, dans une approche ReAct.
+Prompt « spec » pour générer l’agent LangChain
 
-🎯 Objectif de l’agent :
-Analyser un nouveau dossier d’appel d’offre (AO) fourni au format brut (PDF, DOC, DOCX, XLS, XLSX…) et produire :
-1. Un résumé des besoins / contraintes / délais / critères de notation.
-2. Une recommandation Go / NoGo (en fonction du contenu et des AO passés).
-3. Un début de plan de réponse (ou draft de réponse structurée).
-4. Un résumé clair pour un responsable.
+🎯 Objectif
 
-🧠 Outils à disposition :
-L’agent dispose de deux outils externes :
-1. `query_rag(question: str)` → permet de poser une question libre et d’obtenir les extraits les plus pertinents des anciens AO (Go/NoGo) via un moteur RAG.
-2. `read_documents_from_folder(folder_path: str)` → permet de lire l’ensemble des documents d’un dossier AO (PDF, DOC, DOCX, XLS, XLSX) et de retourner leur contenu textuel brut. L’agent peut ensuite explorer, résumer ou structurer ce contenu.
+Construis un agent autonome (approche ReAct) capable de lire un dossier d’appel d’offres (AO) brut, d’en extraire l’essentiel puis de décider Go / NoGo.
+Livrables attendus :
+	1.	Résumé détaillé : besoins, contraintes, délais, critères de notation.
+	2.	Recommandation Go / NoGo (argumentée).
+	3.	Ébauche de plan de réponse (plan structuré : compréhension / proposition / planning / budget).
+	4.	Synthèse “manager” (1 page, claire, prête à copier-coller).
 
-⚙️ Fonctionnement :
-- L’agent utilise le modèle `ChatMistralAI` via LangChain.
-- Il doit réfléchir étape par étape (*ReAct*) et utiliser les outils de manière autonome et justifiée.
-- Il peut mémoriser les résultats intermédiaires dans une mémoire de travail.
-- Il doit toujours produire une réponse structurée et exploitable (Markdown si utile).
+🧰 Outils disponibles
 
-🧭 Aide au développement :
-- Si besoin d’exemples ou de documentation sur LangChain ou `ChatMistralAI`, utilise le serveur MCP `context7` pour faire des recherches à jour.
+Nom du wrapper	Signature	Rôle
+read_documents_from_folder(folder_path: str) -> dict	Retourne :• text : concat brut (✂︎ 4 000 car. max/fichier)• long_files : liste {filepath, length} pour les fichiers tronqués	Import initial du dossier AO
+read_more_from_file(filepath: str, offset: int = 4000, max_chars: int = 4000) -> str	Lit la suite d’un fichier long, par tranches	Exploration incrémentale
+query_rag(question: str) -> Any	Recherche RAG dans l’historique d’AO (anciens Go/NoGo)	Enrichir l’analyse
 
-Objectif : coder un POC simple, autonome, modulaire (moins de 500 lignes si possible), exécutable localement en Python, sans dépendances complexes ni cloud externe.
+⚙️ Contraintes & bonnes pratiques
+	•	Modèle : ChatMistralAI (via langchain_openai.ChatMistralAI ou équivalent).
+	•	Mémoire courte : ne garde que les 4 derniers messages pour ne pas dépasser ~16 k tokens.
+	•	Limiter le contexte :
+	•	Max 2 000 car. envoyés au modèle au total lors du “résumé initial”.
+	•	Si long_files non vide, utiliser read_more_from_file en boucle (ReAct) plutôt que tout charger d’un coup.
+	•	Streaming / ReAct : réfléchir pas-à-pas → décider → appeler outil → stocker résultat → continuer.
+	•	< 500 lignes : architecture modulaire (1 fichier) ; classes/fonctions courtes, pas de sur-ingénierie.
+	•	Dépendances : langchain, openai (ou mistralai), PyPDF2, python-docx, pandas, openpyxl, python-pptx. Rien de plus.
+	•	Exécution locale : pas de cloud externe, pas de base vectorielle — juste les outils fournis.
+
+📝 Format de sortie exigé (Markdown)
+
+### Résumé des documents
+...
+
+### Points à explorer via RAG
+- ...
+- ...
+
+### Résultats RAG
+- **Point 1** : …
+- **Point 2** : …
+
+### Recommandation Go / NoGo
+> **GO** because …  
+> **NO GO** because …
+
+### Plan de réponse
+1. Compréhension du besoin  
+2. Proposition technique / fonctionnelle  
+3. Équipe & planning  
+4. Proposition financière (si info dispo)
+
+### Synthèse manager
+**Besoin** : …  
+**Décision** : GO / NO GO  
+**Pourquoi** : 1) …  2) …  3) …  
+**Next steps** : …
+
+💡 Étapes internes recommandées (ordre indicatif)
+	1.	Import initial : read_documents_from_folder → tronquer à 2 000 car. max.
+	2.	Premier résumé pour lister les “Points à explorer via RAG”.
+	3.	Boucle RAG : pour chaque point, query_rag, résumer, agréger.
+	4.	Lecture incrémentale si des long_files semblent critiques (ReAct : décider, appeler read_more_from_file, résumer, boucler).
+	5.	Synthèse finale : remplir les 5 blocs Markdown ci-dessus.
+
+🔧 Conseils d’implémentation
+	•	Token safety : avant chaque appel LLM, calcule la taille totale ; si > 15 000 tokens → réduit ou oublie les messages les plus vieux.
+	•	Fonction “print_agent_action” (optionnelle) : log console clair — utile pour le débogage.
+	•	Tests : prévoir un dossier “sample_AO” avec 2-3 docs variés pour valider.

@@ -10,14 +10,23 @@ import os
 # Outil : query_rag
 @tool
 def query_rag_tool(question: str) -> Any:
-    """Interroge la base documentaire AO passés (GO/NOGO) pour aider à raisonner sur un nouvel AO."""
+    """Récupère des extraits pertinents d'AO passés (Go/NoGo) via RAG."""
     from rag import query_rag
     return query_rag(question)
 
+# 1. ShortMemory
+class ShortMemory(MemorySaver):
+    def put(self, config, state, *args, **kwargs):
+        # Ne garde que les 2 derniers messages dans la mémoire
+        if "messages" in state and isinstance(state["messages"], list):
+            state = dict(state)  # shallow copy
+            state["messages"] = state["messages"][-2:]
+        return super().put(config, state, *args, **kwargs)
+
 # Outil : read_documents_from_folder (ne lit que le début de chaque document)
 @tool
-def read_documents_from_folder_tool(folder_path: str, max_chars: int = 4000) -> str:
-    """Lit le début de chaque document d'un dossier AO (PDF, DOC, DOCX, XLS, XLSX, TXT, CSV, PPTX) et retourne leur contenu textuel brut concaténé (max_chars par fichier)."""
+def read_documents_from_folder_tool(folder_path: str, max_chars: int = 1500) -> Any:
+    """Concatène le début (≤ 1 500 car.) de chaque fichier du dossier AO."""
     import glob
     from pathlib import Path
     import docx, pandas as pd
@@ -35,6 +44,7 @@ def read_documents_from_folder_tool(folder_path: str, max_chars: int = 4000) -> 
         pptx = None
     exts = ("pdf", "doc", "docx", "xls", "xlsx", "txt", "csv", "pptx")
     texts = []
+    long_files = []
     for ext in exts:
         for file in Path(folder_path).rglob(f"*.{ext}"):
             try:
@@ -60,14 +70,23 @@ def read_documents_from_folder_tool(folder_path: str, max_chars: int = 4000) -> 
                     content = "\n".join(shape.text for slide in prs.slides for shape in slide.shapes if hasattr(shape, "text"))
                 if content:
                     texts.append(f"--- {file} ---\n" + content[:max_chars])
+                    if len(content) > max_chars:
+                        long_files.append({
+                            "filepath": str(file),
+                            "length": len(content),
+                            "has_more": True
+                        })
             except Exception as e:
                 continue
-    return "\n\n".join(texts)
+    return {
+        "text": "\n\n".join(texts),
+        "long_files": long_files
+    }
 
 # Outil : read_more_from_file
 @tool
 def read_more_from_file(filepath: str, offset: int = 4000, max_chars: int = 4000) -> str:
-    """Lit la suite d'un fichier à partir d'un offset (en caractères), pour permettre à l'agent d'explorer un document volumineux par morceaux."""
+    """Lit un segment supplémentaire d'un fichier long (pagination)."""
     from pathlib import Path
     import docx, pandas as pd
     try:
@@ -110,26 +129,15 @@ def read_more_from_file(filepath: str, offset: int = 4000, max_chars: int = 4000
         return f"Aucun contenu lisible dans {filepath}"
     return content[offset:offset+max_chars]
 
-# Prompt système pour l'agent
+# Nouveau SYSTEM_PROMPT pour orchestration autonome
 SYSTEM_PROMPT = """
-Tu es un agent expert en analyse d'appels d'offres (AO) pour une société de conseil data.
-Ton objectif est d'analyser un nouveau dossier AO (fourni sous forme de dossier contenant des fichiers) et de produire :
-1. Un résumé des besoins, contraintes, délais, critères de notation.
-2. Une recommandation Go/NoGo (en t'appuyant sur les AO passés via l'outil query_rag).
-3. Un début de plan de réponse structuré.
-4. Un résumé clair pour un manager.
-
-Tu disposes de trois outils :
-- read_documents_from_folder : pour lire le début de chaque document d'un dossier AO (max 4000 caractères par fichier)
-- read_more_from_file : pour lire la suite d'un fichier si tu en as besoin (en précisant le chemin et l'offset)
-- query_rag : pour interroger la base documentaire des AO passés (GO/NOGO)
-
-Raisonne étape par étape (ReAct) et utilise read_documents_from_folder pour commencer, puis read_more_from_file si tu veux explorer un document en profondeur, et query_rag dès que tu as besoin d'exemples ou de contexte.
-Ta sortie finale doit être lisible et structurée (Markdown si utile).
+Tu es consultant data. À partir de documents AO et du RAG, produis :
+1) résumé, 2) points à creuser, 3) Go/NoGo argumenté, 4) plan de réponse, 5) synthèse manager.
+Structure toujours ta réponse en 5 blocs Markdown nommés comme ci-dessous.
 """
 
 def make_agent():
-    memory = MemorySaver()
+    memory = ShortMemory()
     model = ChatOpenAI(temperature=0)
     tools = [read_documents_from_folder_tool, read_more_from_file, query_rag_tool]
     agent = create_react_agent(
@@ -140,14 +148,92 @@ def make_agent():
     )
     return agent, memory
 
+def print_agent_action(event):
+    """Affiche l'action de l'agent (lecture, appel rag, etc.), le content des réponses intermédiaires, et les fichiers lus via RAG."""
+    if "tool" in event:
+        if event["tool"] == "read_documents_from_folder_tool":
+            print(f"[Agent] Lecture des documents du dossier AO...")
+        elif event["tool"] == "query_rag_tool":
+            print(f"[Agent] Appel à query_rag_tool : {event.get('tool_input','')[:60]}...")
+            # Affiche les fichiers consultés si le résultat est une liste de dicts avec 'filepath'
+            result = event.get("output", None)
+            if isinstance(result, list):
+                filepaths = [r.get("filepath") for r in result if isinstance(r, dict) and "filepath" in r]
+                if filepaths:
+                    print("[Agent] Fichiers consultés via RAG :")
+                    for fp in filepaths:
+                        print(f"   - {fp}")
+        elif event["tool"] == "read_more_from_file":
+            print(f"[Agent] Lecture d'un extrait supplémentaire : {event.get('tool_input','')[:60]}...")
+        else:
+            print(f"[Agent] Utilisation de l'outil : {event['tool']}")
+    elif "messages" in event:
+        msg = event["messages"][-1]
+        if hasattr(msg, 'type') and msg.type == 'human':
+            print("[Utilisateur] Nouvelle consigne envoyée à l'agent.")
+        elif hasattr(msg, 'type') and msg.type == 'ai':
+            print("[Agent] Génération d'une réponse intermédiaire :\n")
+            print(msg.content)
+
 def run_agent_on_folder(folder_path: str):
     agent, memory = make_agent()
     thread_id = uuid.uuid4()
     config = {"configurable": {"thread_id": thread_id}}
-    input_message = HumanMessage(content=f"Voici le dossier AO à analyser : {folder_path}")
-    print("\n--- Analyse de l'appel d'offre ---\n")
+    # 1. Lecture et résumé initial
+    docs_info = read_documents_from_folder_tool.invoke(folder_path)
+    if isinstance(docs_info, dict):
+        text = docs_info.get("text", "")
+        long_files = docs_info.get("long_files", [])
+    else:
+        text = docs_info
+        long_files = []
+    # Limite stricte : max 1200 caractères au total, 300 par doc, max 3 docs
+    MAX_DOCS = 3
+    DOC_SLICE = 300
+    TOTAL_MAX = 1200
+    docs_split = text.split("--- ")
+    selected_docs = []
+    char_count = 0
+    for doc in docs_split:
+        if len(selected_docs) >= MAX_DOCS:
+            break
+        doc = doc.strip()
+        if not doc:
+            continue
+        doc = doc[:DOC_SLICE]
+        if char_count + len(doc) > TOTAL_MAX:
+            break
+        selected_docs.append(doc)
+        char_count += len(doc)
+    final_text = "\n--- ".join(selected_docs)
+    if len(text) > len(final_text):
+        final_text += "\n\n[Texte tronqué pour respecter la limite stricte de contexte]"
+    input_message = HumanMessage(content=f"Voici le dossier AO à analyser :\n\n{final_text}")
+    print("\n--- Lecture et résumé des documents AO ---\n")
     for event in agent.stream({"messages": [input_message]}, config, stream_mode="values"):
-        event["messages"][-1].pretty_print()
+        print_agent_action(event)
+    # 2. Exploration RAG sur des thèmes clés
+    themes = [
+        "procédure avec négociation",
+        "budget estimé",
+        "plateforme Datalake",
+        "durée du contrat",
+        "clauses RGPD"
+    ]
+    rag_insights = []
+    print("\n--- Exploration RAG sur thèmes clés ---\n")
+    for theme in themes:
+        result = query_rag_tool.invoke(theme)
+        if isinstance(result, list):
+            result = result[:2]
+        rag_insights.append(f"**{theme}**:\n{str(result)[:1200]}\n")
+        print(f"[Agent] Appel RAG pour le thème : {theme}")
+    rag_summary = "\n\n".join(rag_insights)
+    rag_summary = rag_summary[:6000]
+    rag_message = HumanMessage(content=f"Voici les résultats RAG à intégrer à ton analyse :\n\n{rag_summary}")
+    print("\n--- Analyse finale (Go/NoGo, plan, synthèse manager) ---\n")
+    for event in agent.stream({"messages": []}, config, stream_mode="values"):
+        print_agent_action(event)
 
 if __name__ == "__main__":
     folder_path = input("Chemin du dossier AO à analyser : ")

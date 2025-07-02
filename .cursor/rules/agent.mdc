@@ -1,0 +1,27 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Tu développes un agent autonome en Python à l’aide de LangChain, dans une approche ReAct.
+
+🎯 Objectif de l’agent :
+Analyser un nouveau dossier d’appel d’offre (AO) fourni au format texte structuré, et produire :
+1. Un résumé des besoins / contraintes / délais / critères de notation.
+2. Une recommandation Go / NoGo (en fonction du contenu et des AO passés).
+3. Un début de plan de réponse (ou draft de réponse structurée).
+4. Un résumé clair pour un responsable.
+
+🧠 Outils de l’agent :
+L’agent ne dispose que d’un **seul outil** externe : `query_rag(question: str)` qui lui permet de poser une question libre en langage naturel et d'obtenir des extraits de documents passés (ancien AO Go/NoGo) pour l’aider à raisonner. Il doit apprendre à l’utiliser de manière itérative et autonome.
+
+⚙️ Fonctionnement :
+- L’agent utilise le modèle `ChatMistralAI` via LangChain.
+- Il doit réfléchir étape par étape (*ReAct*) et appeler `query_rag` quand il estime que c’est utile.
+- Il peut stocker en mémoire de travail ce qu’il apprend pour enrichir ses futures réponses.
+- Il doit toujours finir par une sortie lisible et structurée (Markdown si utile).
+
+🧭 Aide au développement :
+- Si besoin d’exemples ou d’infos sur LangChain ou sur la classe `ChatMistralAI`, utilise le serveur MCP `context7` pour rechercher dans la doc à jour.
+
+Objectif : coder un POC simple et lisible (moins de 500 lignes si possible), exécutable localement, en Python, sans dépendance complexe.

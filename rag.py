@@ -38,6 +38,8 @@ RACINE = "OneDrive_1_02-07-2025"
 AO_TYPES = {"AO_GO": "GO", "AO_NOGO": "NOGO"}
 EXTENSIONS = ("pdf", "docx", "txt", "csv", "xls", "xlsx", "pptx")
 
+DEBUG = False  # Passe à True pour ne vectoriser que 2 fichiers
+
 # Extraction de texte selon le type de fichier
 def extract_text_from_file(filepath: str) -> str:
     ext = filepath.lower().split(".")[-1]
@@ -202,41 +204,44 @@ def query_rag(question: str, top_k: int = 5):
     return results
 
 if __name__ == "__main__":
-    # MODE TEST : ne vectoriser que 2 fichiers pour valider la pipeline
     docs = []
     racine = Path(RACINE)
     count = 0
-    for ao_folder, decision in AO_TYPES.items():
-        ao_dir = racine / ao_folder
-        if not ao_dir.exists():
-            continue
-        for ao in ao_dir.iterdir():
-            if not ao.is_dir():
+    if DEBUG:
+        for ao_folder, decision in AO_TYPES.items():
+            ao_dir = racine / ao_folder
+            if not ao_dir.exists():
                 continue
-            ao_id = ao.name
-            for ext in EXTENSIONS:
-                for filepath in ao.rglob(f"*.{ext}"):
-                    rel_path = filepath.relative_to(racine)
-                    text = extract_text_from_file(str(filepath))
-                    if text.strip():
-                        for chunk in chunk_text(text):
-                            docs.append({
-                                "content": chunk,
-                                "metadata": {
-                                    "filepath": str(rel_path),
-                                    "ao_id": ao_id,
-                                    "decision": decision
-                                }
-                            })
-                        count += 1
-                        if count >= 2:
-                            break
+            for ao in ao_dir.iterdir():
+                if not ao.is_dir():
+                    continue
+                ao_id = ao.name
+                for ext in EXTENSIONS:
+                    for filepath in ao.rglob(f"*.{ext}"):
+                        rel_path = filepath.relative_to(racine)
+                        text = extract_text_from_file(str(filepath))
+                        if text.strip():
+                            for chunk in chunk_text(text):
+                                docs.append({
+                                    "content": chunk,
+                                    "metadata": {
+                                        "filepath": str(rel_path),
+                                        "ao_id": ao_id,
+                                        "decision": decision
+                                    }
+                                })
+                            count += 1
+                            if count >= 2:
+                                break
+                    if count >= 2:
+                        break
                 if count >= 2:
                     break
             if count >= 2:
                 break
-        if count >= 2:
-            break
-    print(f"Test : {len(docs)} chunks extraits à partir de 2 fichiers.")
+        print(f"Test : {len(docs)} chunks extraits à partir de 2 fichiers.")
+    else:
+        docs = get_all_documents()
+        print(f"Vectorisation complète : {len(docs)} chunks extraits.")
     build_index(docs)
-    print("Test terminé. Index construit sur 2 fichiers.") 
+    print("Index construit.") 

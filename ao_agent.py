@@ -2,10 +2,13 @@ import uuid
 from typing import Any
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 import os
+from mistralai import Mistral
+from langchain_core.language_models.chat_models import SimpleChatModel
+from langchain_core.messages.ai import AIMessage
+from pydantic import Field
 
 # Outil : query_rag
 @tool
@@ -138,7 +141,58 @@ Structure toujours ta réponse en 5 blocs Markdown nommés comme ci-dessous.
 
 def make_agent():
     memory = ShortMemory()
-    model = ChatOpenAI(temperature=0)
+    mistral_api_key = os.getenv("MISTRAL_API_KEY", "")
+    mistral_model = "mistral-small-latest"
+    class MistralChatModel(SimpleChatModel):
+        api_key: str = Field(default="", exclude=True)
+        model: str = Field(default="mistral-small-latest", exclude=True)
+        lc_tools: list = Field(default_factory=list, exclude=True)
+
+        def __init__(self, api_key, model, lc_tools=None, **kwargs):
+            super().__init__(**kwargs)
+            object.__setattr__(self, "api_key", api_key)
+            object.__setattr__(self, "model", model)
+            object.__setattr__(self, "lc_tools", lc_tools or [])
+
+        @property
+        def _llm_type(self):
+            return "mistral-chat"
+
+        def bind_tools(self, tools, tool_choice=None):
+            return self.__class__(
+                api_key=self.api_key,
+                model=self.model,
+                lc_tools=tools,
+                **self.dict(exclude={"api_key", "model", "lc_tools"})
+            )
+
+        def _call(self, messages, stop=None, run_manager=None, **kwargs):
+            # Conversion des messages LangChain en format Mistral
+            mistral_messages = []
+            for m in messages:
+                if hasattr(m, "type"):
+                    if m.type == "human":
+                        mistral_messages.append({"role": "user", "content": m.content})
+                    elif m.type == "ai":
+                        # On ignore les messages assistant pour Mistral (sinon erreur 400)
+                        continue
+                    elif m.type == "tool":
+                        mistral_messages.append({"role": "tool", "content": m.content})
+                    elif m.type == "system":
+                        mistral_messages.append({"role": "system", "content": m.content})
+                else:
+                    # fallback : on traite comme user
+                    mistral_messages.append({"role": "user", "content": getattr(m, "content", str(m))})
+            # S'assurer que le dernier message est bien user ou tool
+            while mistral_messages and mistral_messages[-1]["role"] not in ("user", "tool"):
+                mistral_messages.pop()
+            with Mistral(api_key=self.api_key) as mistral:
+                res = mistral.chat.complete(
+                    model=self.model,
+                    messages=mistral_messages,
+                )
+            return res.choices[0].message.content
+    model = MistralChatModel(mistral_api_key, mistral_model)
     tools = [read_documents_from_folder_tool, read_more_from_file, query_rag_tool]
     agent = create_react_agent(
         model,

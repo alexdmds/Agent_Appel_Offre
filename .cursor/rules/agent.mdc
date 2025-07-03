@@ -22,14 +22,15 @@ read_more_from_file(filepath: str, offset: int = 4000, max_chars: int = 4000) ->
 query_rag(question: str) -> Any	Recherche RAG dans l’historique d’AO (anciens Go/NoGo)	Enrichir l’analyse
 
 ⚙️ Contraintes & bonnes pratiques
-	•	Modèle : ChatMistralAI (via langchain_openai.ChatMistralAI ou équivalent).
+	•	Modèle : ChatMistralAI
+	•	Utiliser la clé API en var d'env : MISTRAL_API_KEY
 	•	Mémoire courte : ne garde que les 4 derniers messages pour ne pas dépasser ~16 k tokens.
 	•	Limiter le contexte :
 	•	Max 2 000 car. envoyés au modèle au total lors du “résumé initial”.
 	•	Si long_files non vide, utiliser read_more_from_file en boucle (ReAct) plutôt que tout charger d’un coup.
 	•	Streaming / ReAct : réfléchir pas-à-pas → décider → appeler outil → stocker résultat → continuer.
 	•	< 500 lignes : architecture modulaire (1 fichier) ; classes/fonctions courtes, pas de sur-ingénierie.
-	•	Dépendances : langchain, openai (ou mistralai), PyPDF2, python-docx, pandas, openpyxl, python-pptx. Rien de plus.
+	•	Dépendances : langchain, mistralai, PyPDF2, python-docx, pandas, openpyxl, python-pptx. Rien de plus.
 	•	Exécution locale : pas de cloud externe, pas de base vectorielle — juste les outils fournis.
 
 📝 Format de sortie exigé (Markdown)

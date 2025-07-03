@@ -10,5 +10,5 @@ python-pptx
 xlrd
 langchain
 langgraph
-langchain-openai
-langchain-core 
+langchain-core
+mistralai 

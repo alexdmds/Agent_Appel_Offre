@@ -9,6 +9,19 @@ from mistralai import Mistral
 from langchain_core.language_models.chat_models import SimpleChatModel
 from langchain_core.messages.ai import AIMessage
 from pydantic import Field
+import logging
+
+# Configuration logging globale
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler("agent_full.log", mode="w", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("agent")
+logger.setLevel(logging.DEBUG)
 
 # Outil : query_rag
 @tool
@@ -142,7 +155,7 @@ Structure toujours ta réponse en 5 blocs Markdown nommés comme ci-dessous.
 def make_agent():
     memory = ShortMemory()
     mistral_api_key = os.getenv("MISTRAL_API_KEY", "")
-    mistral_model = "mistral-small-latest"
+    mistral_model = "mistral-large-latest"
     class MistralChatModel(SimpleChatModel):
         api_key: str = Field(default="", exclude=True)
         model: str = Field(default="mistral-small-latest", exclude=True)
@@ -203,31 +216,43 @@ def make_agent():
     return agent, memory
 
 def print_agent_action(event):
-    """Affiche l'action de l'agent (lecture, appel rag, etc.), le content des réponses intermédiaires, et les fichiers lus via RAG."""
+    """Affiche l'action de l'agent (lecture, appel rag, etc.), le content des réponses intermédiaires, et les fichiers lus via RAG. Loggue tout dans agent_full.log."""
     if "tool" in event:
         if event["tool"] == "read_documents_from_folder_tool":
-            print(f"[Agent] Lecture des documents du dossier AO...")
+            msg = f"[Agent] Lecture des documents du dossier AO..."
+            print(msg)
+            logger.info(msg)
         elif event["tool"] == "query_rag_tool":
-            print(f"[Agent] Appel à query_rag_tool : {event.get('tool_input','')[:60]}...")
-            # Affiche les fichiers consultés si le résultat est une liste de dicts avec 'filepath'
+            msg = f"[Agent] Appel à query_rag_tool : {event.get('tool_input','')[:60]}..."
+            print(msg)
+            logger.info(msg)
             result = event.get("output", None)
             if isinstance(result, list):
                 filepaths = [r.get("filepath") for r in result if isinstance(r, dict) and "filepath" in r]
                 if filepaths:
                     print("[Agent] Fichiers consultés via RAG :")
+                    logger.info("[Agent] Fichiers consultés via RAG :")
                     for fp in filepaths:
                         print(f"   - {fp}")
+                        logger.info(f"   - {fp}")
         elif event["tool"] == "read_more_from_file":
-            print(f"[Agent] Lecture d'un extrait supplémentaire : {event.get('tool_input','')[:60]}...")
+            msg = f"[Agent] Lecture d'un extrait supplémentaire : {event.get('tool_input','')[:60]}..."
+            print(msg)
+            logger.info(msg)
         else:
-            print(f"[Agent] Utilisation de l'outil : {event['tool']}")
+            msg = f"[Agent] Utilisation de l'outil : {event['tool']}"
+            print(msg)
+            logger.info(msg)
     elif "messages" in event:
         msg = event["messages"][-1]
         if hasattr(msg, 'type') and msg.type == 'human':
             print("[Utilisateur] Nouvelle consigne envoyée à l'agent.")
+            logger.info("[Utilisateur] Nouvelle consigne envoyée à l'agent.")
         elif hasattr(msg, 'type') and msg.type == 'ai':
             print("[Agent] Génération d'une réponse intermédiaire :\n")
+            logger.info("[Agent] Génération d'une réponse intermédiaire :\n")
             print(msg.content)
+            logger.debug(msg.content)
 
 def run_agent_on_folder(folder_path: str):
     agent, memory = make_agent()

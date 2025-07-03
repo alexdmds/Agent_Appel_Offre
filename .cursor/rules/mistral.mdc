@@ -1,0 +1,70 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+✅ Setup API Mistral
+
+pip install langchain langchain-mistralai
+export MISTRAL_API_KEY=sk-...
+
+
+⸻
+
+🧠 Init LLM Mistral
+
+from langchain_mistralai import ChatMistralAI
+
+llm = ChatMistralAI(
+    model="mistral-large-latest",  # ou "mistral-small"
+    temperature=0
+)
+
+
+⸻
+
+🛠️ Définir des outils
+
+from langchain.agents import Tool
+
+def search_docs(query: str) -> str:
+    return "Résultat pour : " + query
+
+tools = [
+    Tool(
+        name="SearchDocs",
+        func=search_docs,
+        description="Recherche des infos dans des documents internes."
+    )
+]
+
+
+⸻
+
+🤖 Initialiser l’agent ReAct
+
+from langchain.agents import initialize_agent, AgentType
+
+agent = initialize_agent(
+    tools,
+    llm,
+    agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True
+)
+
+
+⸻
+
+🗨️ Lancer une question
+
+response = agent.run("Quelle est la mission d’Action Logement ?")
+print(response)
+
+
+⸻
+
+⚠️ Conseils
+	•	temperature=0 pour que le LLM suive bien le format ReAct
+	•	Fournir des descriptions claires pour chaque outil
+	•	Utiliser CHAT_ZERO_SHOT_REACT_DESCRIPTION pour ReAct avec modèle chat
+	•	OK 100 % sans OpenAI : Mistral suffit avec LangChain

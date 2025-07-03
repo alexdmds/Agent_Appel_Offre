@@ -46,9 +46,8 @@ query_rag(question: str) -> Any	Recherche RAG dans l’historique d’AO (ancien
 - **Point 1** : …
 - **Point 2** : …
 
-### Recommandation Go / NoGo
-> **GO** because …  
-> **NO GO** because …
+### Recommandation Go ou NO Go
+> **GO** / **NO GO** because …  
 
 ### Plan de réponse
 1. Compréhension du besoin  
@@ -70,6 +69,5 @@ query_rag(question: str) -> Any	Recherche RAG dans l’historique d’AO (ancien
 	5.	Synthèse finale : remplir les 5 blocs Markdown ci-dessus.
 
 🔧 Conseils d’implémentation
-	•	Token safety : avant chaque appel LLM, calcule la taille totale ; si > 15 000 tokens → réduit ou oublie les messages les plus vieux.
 	•	Fonction “print_agent_action” (optionnelle) : log console clair — utile pour le débogage.
 	•	Tests : prévoir un dossier “sample_AO” avec 2-3 docs variés pour valider.

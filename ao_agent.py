@@ -258,7 +258,7 @@ def run_agent_on_folder(folder_path: str):
     agent, memory = make_agent()
     thread_id = uuid.uuid4()
     config = {"configurable": {"thread_id": thread_id}}
-    # 1. Lecture et résumé initial
+    # 1. Lecture et résumé initial (préparation du contexte)
     docs_info = read_documents_from_folder_tool.invoke(folder_path)
     if isinstance(docs_info, dict):
         text = docs_info.get("text", "")
@@ -288,10 +288,8 @@ def run_agent_on_folder(folder_path: str):
     if len(text) > len(final_text):
         final_text += "\n\n[Texte tronqué pour respecter la limite stricte de contexte]"
     input_message = HumanMessage(content=f"Voici le dossier AO à analyser :\n\n{final_text}")
-    print("\n--- Lecture et résumé des documents AO ---\n")
-    for event in agent.stream({"messages": [input_message]}, config, stream_mode="values"):
-        print_agent_action(event)
-    # 2. Exploration RAG sur des thèmes clés
+
+    # 2. Exploration RAG sur des thèmes clés (préparation du contexte RAG)
     themes = [
         "procédure avec négociation",
         "budget estimé",
@@ -300,18 +298,20 @@ def run_agent_on_folder(folder_path: str):
         "clauses RGPD"
     ]
     rag_insights = []
-    print("\n--- Exploration RAG sur thèmes clés ---\n")
     for theme in themes:
         result = query_rag_tool.invoke(theme)
         if isinstance(result, list):
             result = result[:2]
         rag_insights.append(f"**{theme}**:\n{str(result)[:1200]}\n")
-        print(f"[Agent] Appel RAG pour le thème : {theme}")
     rag_summary = "\n\n".join(rag_insights)
     rag_summary = rag_summary[:6000]
     rag_message = HumanMessage(content=f"Voici les résultats RAG à intégrer à ton analyse :\n\n{rag_summary}")
-    print("\n--- Analyse finale (Go/NoGo, plan, synthèse manager) ---\n")
-    for event in agent.stream({"messages": []}, config, stream_mode="values"):
+
+    # 3. Lancement de l'agent : une seule génération finale, avec tout le contexte
+    print("\n--- Analyse complète (Go/NoGo, plan, synthèse manager) ---\n")
+    # On envoie les deux messages dans la même conversation
+    messages = [input_message, rag_message]
+    for event in agent.stream({"messages": messages}, config, stream_mode="values"):
         print_agent_action(event)
 
 if __name__ == "__main__":
